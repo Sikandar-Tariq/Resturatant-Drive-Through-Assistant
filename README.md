@@ -1,10 +1,11 @@
 # AI Drive-Through Assistant
 
-An AI-powered drive-through ordering system built with Streamlit and efficient small language models. Designed for local deployment at restaurants with minimal computational requirements.
+An AI-powered drive-through ordering system built with Streamlit and efficient small language models. Uses a **Model Context Protocol (MCP)** approach for reliable, deterministic state management. Designed for local deployment at restaurants with minimal computational requirements.
 
 ## Features
 
 - 🤖 AI-powered order management using efficient models (default: Meta Llama 3.2 3B)
+- 🔄 Model Context Protocol (MCP) for reliable state management
 - 💬 Chat-style interface for natural ordering
 - 📋 Real-time menu display
 - 🛒 Live order summary with total calculation
@@ -42,6 +43,86 @@ An AI-powered drive-through ordering system built with Streamlit and efficient s
 - "I'll take a Big Mac and 2 Large Fries"
 - "Actually, make that two Big Macs and remove one fry"
 - "Change the remaining fry to a Coke"
+
+## MCP (Model Context Protocol) Approach
+
+This system implements a **Model Context Protocol (MCP)** architecture, which is a structured state management pattern for LLM interactions. Instead of treating the conversation as a free-form chat, this approach treats each interaction as a state update operation.
+
+### How It Works:
+
+1. **Context Injection**: Every API call includes the current state directly in the system prompt:
+   - Complete menu with prices
+   - Current order state (items and quantities)
+   - User's latest request
+
+2. **State Update Pattern**: The model receives:
+   ```
+   MENU: {all available items}
+   CURRENT ORDER STATE: {current order}
+   USER REQUEST: "add 2 Big Macs"
+   ```
+
+3. **Structured Output**: The model returns:
+   - A conversational message for the user
+   - The NEW complete order state as JSON
+
+4. **State Persistence**: The system maintains a single source of truth (the order state) that gets updated with each interaction.
+
+### Why MCP Approach?
+
+**Advantages:**
+
+1. **Deterministic State Management**: 
+   - No ambiguity about what's in the order
+   - The model always sees the complete current state
+   - Eliminates conversational drift or forgetting
+
+2. **Error Recovery**:
+   - If the model makes an error, the next request sees the actual current state
+   - Self-correcting: customer can say "remove that" and the model sees what "that" is
+
+3. **Small Context Windows**:
+   - Only the last few turns needed in conversation history
+   - Most context is the explicit state (menu + order), not chat history
+   - Perfect for smaller models like Llama 3.2 3B
+
+4. **Reliability**:
+   - Each response validates against the menu
+   - Invalid items are automatically filtered
+   - State is always valid
+
+5. **Task-Specific Optimization**:
+   - The model knows exactly what to do (update state)
+   - Clear input format (state) → clear output format (new state)
+   - No need for complex reasoning chains
+
+### MCP vs Traditional Chat Approaches:
+
+| Traditional Chat | MCP Approach |
+|------------------|--------------|
+| Conversation history only | Explicit state + minimal history |
+| Model must remember state | State always provided |
+| Can lose track of orders | State is always accurate |
+| Requires large context | Small, focused context |
+| General-purpose reasoning | Task-specific state updates |
+
+### Implementation Details:
+
+The system prompt dynamically injects the current order state:
+
+```python
+def get_system_prompt(self):
+    return f"""
+    MENU: {json.dumps(self.menu, indent=2)}
+    CURRENT ORDER STATE: {json.dumps(self.current_order, indent=2)}
+    
+    INSTRUCTIONS:
+    1. Update the 'CURRENT ORDER STATE' based on the user's new message.
+    2. Output the NEW FINAL ORDER STATE as a JSON object.
+    """
+```
+
+This ensures every interaction has complete context, making it perfect for small, efficient models that don't have large context windows or advanced reasoning capabilities.
 
 ## Why Small, Efficient Models?
 
